@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora de matrices</title>
+<style>
+  :root {
+    --bg: #f0f0f0; --fg: #000000;
+    --entrada-bg: #ffffff; --boton-bg: #e1e1e1; --texto-bg: #ffffff;
+    --borde: #b5b5b5;
+  }
+  :root[data-tema="oscuro"] {
+    --bg: #1e1e1e; --fg: #e6e6e6;
+    --entrada-bg: #2d2d2d; --boton-bg: #3a3a3a; --texto-bg: #252526;
+    --borde: #555555;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 12px;
+    background: var(--bg); color: var(--fg);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .encabezado {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .encabezado h1 { font-size: 20px; margin: 0 0 0 4px; }
+  button {
+    background: var(--boton-bg); color: var(--fg);
+    border: 1px solid var(--borde); border-radius: 3px;
+    padding: 5px 12px; font-size: 14px; cursor: pointer;
+  }
+  button:hover { background: var(--entrada-bg); }
+  input {
+    background: var(--entrada-bg); color: var(--fg);
+    border: 1px solid var(--borde); border-radius: 2px;
+    font-size: 15px; text-align: center; padding: 3px;
+  }
+  fieldset {
+    border: 1px solid var(--borde); border-radius: 3px;
+    padding: 10px; margin: 0;
+  }
+  legend { padding: 0 6px; }
+  .paneles { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+  .barra { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .barra input { width: 52px; }
+  .rejilla { display: grid; gap: 6px; }
+  .rejilla input { width: 62px; }
+  .opciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .opciones input { width: 70px; }
+  #salida {
+    background: var(--texto-bg); color: var(--fg);
+    font-family: "Courier New", Courier, monospace; font-size: 13px;
+    height: 460px; overflow: auto; margin: 0; padding: 8px;
+    border: 1px solid var(--borde); white-space: pre;
+  }
+</style>
+</head>
+<body>
+
+<div class="encabezado">
+  <h1>Calculadora de matrices</h1>
+  <button id="botonTema">Modo oscuro</button>
+</div>
+
+<div class="paneles" id="paneles"></div>
+
+<fieldset class="opciones">
+  <legend>Opciones</legend>
+  <label for="entradaN">Módulo n:</label>
+  <input id="entradaN" type="text" value="26">
+  <button id="btnDet">Determinante de A</button>
+  <button id="btnInv">Inversa de A</button>
+  <button id="btnProd">Multiplicar A × B</button>
+  <button id="btnLimpiar">Limpiar</button>
+</fieldset>
+
+<fieldset style="margin-top:10px">
+  <legend>Procedimiento y resultado</legend>
+  <pre id="salida"></pre>
+</fieldset>
+
+<script>
+const TAM_MIN = 1;
+const TAM_MAX = 6;
+
+/* ---------------------------------------------------------------
+   Aritmética modular
+--------------------------------------------------------------- */
+const mod = (a, n) => ((a % n) + n) % n;
+
+function euclidesExtendido(a, n) {
+  let rAnt = n, r = mod(a, n);
+  let xAnt = 0, x = 1;
+  const pasos = [];
+  while (r !== 0) {
+    const q = Math.floor(rAnt / r);
+    pasos.push(`${rAnt} = ${q}·${r} + ${rAnt - q * r}`);
+    [rAnt, r] = [r, rAnt - q * r];
+    [xAnt, x] = [x, xAnt - q * x];
+  }
+  return [rAnt, xAnt, pasos];
+}
+
+/* ---------------------------------------------------------------
+   Álgebra de matrices
+--------------------------------------------------------------- */
+function submatriz(m, i, j) {
+  return m
+    .filter((_, k) => k !== i)
+    .map(fila => [...fila.slice(0, j), ...fila.slice(j + 1)]);
+}
+
+function determinante(m) {
+  const n = m.length;
+  if (n === 1) return m[0][0];
+  if (n === 2) return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+  let suma = 0;
+  for (let j = 0; j < n; j++) {
+    suma += ((-1) ** j) * m[0][j] * determinante(submatriz(m, 0, j));
+  }
+  return suma;
+}
+
+function cofactores(m) {
+  const n = m.length;
+  if (n === 1) return [[1]];
+  return m.map((_, i) =>
+    m.map((_, j) => ((-1) ** (i + j)) * determinante(submatriz(m, i, j)))
+  );
+}
+
+function transpuesta(m) {
+  return m[0].map((_, j) => m.map(fila => fila[j]));
+}
+
+function multiplicar(a, b) {
+  const k = b.length;
+  return a.map((_, i) =>
+    b[0].map((_, j) => {
+      let s = 0;
+      for (let t = 0; t < k; t++) s += a[i][t] * b[t][j];
+      return s;
+    })
+  );
+}
+
+function modulo(m, n) {
+  return m.map(fila => fila.map(x => mod(x, n)));
+}
+
+function formato(m) {
+  let ancho = Math.max(...m.flat().map(x => String(x).length)) + 1;
+  ancho = Math.max(ancho, 4);
+  return m
+    .map(fila => "  " + fila.map(x => String(x).padStart(ancho)).join("  "))
+    .join("\n");
+}
+
+/* ---------------------------------------------------------------
+   Procedimientos (texto paso a paso)
+--------------------------------------------------------------- */
+function procedimientoDet(m) {
+  const n = m.length;
+  const det = determinante(m);
+  if (n === 1) return [[`det(A) = ${m[0][0]}`], det];
+  if (n === 2) {
+    const [a, b, c, d] = [m[0][0], m[0][1], m[1][0], m[1][1]];
+    return [[
+      `det(A) = (${a})·(${d}) - (${b})·(${c})`,
+      `        = ${a * d} - ${b * c} = ${det}`,
+    ], det];
+  }
+
+  const lineas = ["Desarrollo por cofactores (primera fila):"];
+  const terminos = [];
+  for (let j = 0; j < n; j++) {
+    const dSub = determinante(submatriz(m, 0, j));
+    const signo = j % 2 === 0 ? "+" : "-";
+    lineas.push(
+      `   ${signo} (${m[0][j]}) · det(M1${j + 1}) = ${signo} (${m[0][j]}) · (${dSub})`
+    );
+    terminos.push(((-1) ** j) * m[0][j] * dSub);
+  }
+  lineas.push("   = " + terminos.map(t => `(${t})`).join(" + "));
+  lineas.push(`   = ${det}`);
+  lineas.push("   (M1j = menor que resulta de quitar la fila 1 y la columna j)");
+  return [lineas, det];
+}
+
+function procedimientoProducto(a, b) {
+  const k = b.length;
+  const lineas = [];
+  for (let i = 0; i < a.length; i++) {
+    for (let j = 0; j < b[0].length; j++) {
+      const terminos = [];
+      let valor = 0;
+      for (let t = 0; t < k; t++) {
+        terminos.push(`(${a[i][t]})·(${b[t][j]})`);
+        valor += a[i][t] * b[t][j];
+      }
+      lineas.push(`c${i + 1}${j + 1} = ${terminos.join(" + ")} = ${valor}`);
+    }
+  }
+  return lineas;
+}
+
+/* ---------------------------------------------------------------
+   Panel de una matriz (con su propio tamaño)
+--------------------------------------------------------------- */
+class PanelMatriz {
+  constructor(contenedor, titulo, alCambiar) {
+    this.titulo = titulo;
+    this.alCambiar = alCambiar;
+    this.filas = 3;
+    this.columnas = 3;
+    this.celdas = [];
+
+    this.el = document.createElement("fieldset");
+    this.leyenda = document.createElement("legend");
+    this.el.appendChild(this.leyenda);
+
+    const barra = document.createElement("div");
+    barra.className = "barra";
+    this.spinF = this._crearSpin(this.filas);
+    this.spinC = this._crearSpin(this.columnas);
+    const btn = document.createElement("button");
+    btn.textContent = "Aplicar";
+    btn.addEventListener("click", () => this.cambiarTamano());
+
+    barra.append("Filas:", this.spinF, "Columnas:", this.spinC, btn);
+    this.el.appendChild(barra);
+
+    this.rejilla = document.createElement("div");
+    this.rejilla.className = "rejilla";
+    this.el.appendChild(this.rejilla);
+
+    contenedor.appendChild(this.el);
+    this.construir();
+  }
+
+  _crearSpin(valor) {
+    const s = document.createElement("input");
+    s.type = "number";
+    s.min = TAM_MIN;
+    s.max = TAM_MAX;
+    s.value = valor;
+    s.addEventListener("change", () => this.cambiarTamano());
+    s.addEventListener("keydown", e => { if (e.key === "Enter") this.cambiarTamano(); });
+    return s;
+  }
+
+  construir(viejos = null) {
+    this.rejilla.innerHTML = "";
+    this.rejilla.style.gridTemplateColumns = `repeat(${this.columnas}, auto)`;
+    this.celdas = [];
+    for (let i = 0; i < this.filas; i++) {
+      const fila = [];
+      for (let j = 0; j < this.columnas; j++) {
+        const e = document.createElement("input");
+        e.type = "text";
+        e.inputMode = "numeric";
+        let valor = "0";
+        if (viejos && i < viejos.length && j < viejos[i].length) valor = viejos[i][j];
+        e.value = valor;
+        this.rejilla.appendChild(e);
+        fila.push(e);
+      }
+      this.celdas.push(fila);
+    }
+    this.leyenda.textContent = `${this.titulo} (${this.filas}×${this.columnas})`;
+  }
+
+  cambiarTamano() {
+    const f = Number(this.spinF.value);
+    const c = Number(this.spinC.value);
+    const valido = v => Number.isInteger(v) && v >= TAM_MIN && v <= TAM_MAX;
+    if (!valido(f) || !valido(c)) {
+      alert(`Filas y columnas deben ser enteros entre ${TAM_MIN} y ${TAM_MAX}.`);
+      this.spinF.value = this.filas;
+      this.spinC.value = this.columnas;
+      return;
+    }
+    if (f === this.filas && c === this.columnas) return;
+    const viejos = this.celdas.map(fila => fila.map(e => e.value));
+    this.filas = f;
+    this.columnas = c;
+    this.construir(viejos);
+    this.alCambiar(this);
+  }
+
+  leer() {
+    return this.celdas.map(fila =>
+      fila.map(e => {
+        const t = e.value.trim();
+        if (!/^[+-]?\d+$/.test(t)) throw new Error("entrada");
+        return parseInt(t, 10);
+      })
+    );
+  }
+
+  ponerCeros() {
+    this.celdas.forEach(fila => fila.forEach(e => { e.value = "0"; }));
+  }
+}
+
+/* ---------------------------------------------------------------
+   Interfaz
+--------------------------------------------------------------- */
+const salida = document.getElementById("salida");
+const entradaN = document.getElementById("entradaN");
+const botonTema = document.getElementById("botonTema");
+const contenedor = document.getElementById("paneles");
+
+const escribir = texto => { salida.textContent = texto; };
+
+const panelA = new PanelMatriz(contenedor, "Matriz A", () => escribir(""));
+const panelB = new PanelMatriz(contenedor, "Matriz B", () => escribir(""));
+
+function leerN() {
+  const t = entradaN.value.trim();
+  if (!/^[+-]?\d+$/.test(t)) throw new Error("entrada");
+  const n = parseInt(t, 10);
+  if (n < 2) throw new Error("entrada");
+  return n;
+}
+
+function errorEntrada() {
+  alert("Ingresa solo números enteros y un módulo n ≥ 2.");
+}
+
+function exigirCuadrada() {
+  if (panelA.filas !== panelA.columnas) {
+    alert(
+      `A es de ${panelA.filas}×${panelA.columnas}. El determinante y la inversa ` +
+      "solo existen para matrices cuadradas (filas = columnas)."
+    );
+    return false;
+  }
+  return true;
+}
+
+/* ----- tema ----- */
+botonTema.addEventListener("click", () => {
+  const oscuro = document.documentElement.dataset.tema !== "oscuro";
+  document.documentElement.dataset.tema = oscuro ? "oscuro" : "claro";
+  botonTema.textContent = oscuro ? "Modo claro" : "Modo oscuro";
+});
+
+/* ----- determinante ----- */
+function calcularDeterminante() {
+  if (!exigirCuadrada()) return;
+  let m;
+  try { m = panelA.leer(); } catch { errorEntrada(); return; }
+  const [lineas, det] = procedimientoDet(m);
+  const txt = [`MATRIZ A (${m.length}×${m.length})`, formato(m), "", "PROCEDIMIENTO", ...lineas];
+  txt.push("", `Resultado: det(A) = ${det}`);
+  escribir(txt.join("\n"));
+}
+
+/* ----- multiplicación ----- */
+function calcularProducto() {
+  if (panelA.columnas !== panelB.filas) {
+    alert(
+      `No se pueden multiplicar: A es de ${panelA.filas}×${panelA.columnas} y ` +
+      `B es de ${panelB.filas}×${panelB.columnas}.\n` +
+      "Las columnas de A deben ser iguales a las filas de B."
+    );
+    return;
+  }
+  let a, b, n;
+  try { a = panelA.leer(); b = panelB.leer(); n = leerN(); }
+  catch { errorEntrada(); return; }
+
+  const prod = multiplicar(a, b);
+  const txt = [
+    `MATRIZ A (${panelA.filas}×${panelA.columnas})`, formato(a), "",
+    `MATRIZ B (${panelB.filas}×${panelB.columnas})`, formato(b), "",
+    `PROCEDIMIENTO (fila de A × columna de B) -> resultado de ${panelA.filas}×${panelB.columnas}`,
+    ...procedimientoProducto(a, b).map(l => "  " + l), "",
+    "A × B", formato(prod), "",
+    `A × B (mod ${n})`, formato(modulo(prod, n)),
+  ];
+  escribir(txt.join("\n"));
+}
+
+/* ----- inversa ----- */
+function calcularInversa() {
+  if (!exigirCuadrada()) return;
+  let m, n;
+  try { m = panelA.leer(); n = leerN(); }
+  catch { errorEntrada(); return; }
+  const tam = m.length;
+
+  const txt = [`MATRIZ A (${tam}×${tam})`, formato(m), ""];
+
+  // 1) Determinante con su procedimiento
+  const [lineas, det] = procedimientoDet(m);
+  const detMod = mod(det, n);
+  txt.push("1) Determinante de A");
+  txt.push(...lineas.map(l => "   " + l));
+  txt.push(`   det(A) = ${det}  ->  ${detMod} (mod ${n})`);
+
+  // 2) Euclides extendido
+  const [g, x, pasos] = euclidesExtendido(detMod, n);
+  txt.push("", `2) Euclides: mcd(${detMod}, ${n}) = ${g}`);
+  txt.push(...pasos.map(p => "   " + p));
+
+  if (g !== 1) {
+    txt.push("", `El mcd es ${g} ≠ 1, el determinante no es invertible`);
+    txt.push(`módulo ${n}: la matriz NO tiene inversa mod ${n}.`);
+    escribir(txt.join("\n"));
+    return;
+  }
+
+  const detInv = mod(x, n);
+  txt.push("", `3) Inverso de det mod ${n}: ${detInv}`);
+  txt.push(`   (comprobación: ${detMod}·${detInv} mod ${n} = ${mod(detMod * detInv, n)})`);
+
+  // 4) Cofactores y adjunta
+  const cof = cofactores(m);
+  const adj = transpuesta(cof);
+  txt.push(
+    "", "4) Matriz de cofactores  Cij = (-1)^(i+j) · det(Mij)", formato(cof),
+    "", "   Adjunta de A = transpuesta de la matriz de cofactores", formato(adj)
+  );
+
+  // 5) Inversa
+  const inv = adj.map(fila => fila.map(v => mod(detInv * v, n)));
+  txt.push("", `5) A^-1 mod ${n} = ${detInv} · adj(A) mod ${n}`, formato(inv));
+
+  const comprobacion = modulo(multiplicar(m, inv), n);
+  txt.push("", "Verificación A · A^-1 mod n", formato(comprobacion));
+  escribir(txt.join("\n"));
+}
+
+/* ----- limpiar ----- */
+function limpiar() {
+  panelA.ponerCeros();
+  panelB.ponerCeros();
+  escribir("");
+}
+
+document.getElementById("btnDet").addEventListener("click", calcularDeterminante);
+document.getElementById("btnInv").addEventListener("click", calcularInversa);
+document.getElementById("btnProd").addEventListener("click", calcularProducto);
+document.getElementById("btnLimpiar").addEventListener("click", limpiar);
+</script>
+</body>
+</html>
